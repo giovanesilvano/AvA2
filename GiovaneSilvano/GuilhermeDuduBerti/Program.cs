@@ -1,44 +1,131 @@
+using GuilhermeDuduBerti;
+using Microsoft.AspNetCore.Mvc;
+
+
+
 var builder = WebApplication.CreateBuilder(args);
-
-// Add services to the container.
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
-
+builder.Services.AddDbContext<AppDataContext>();
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
+app.MapPost("/GuilhermeDuduBerti/cadastrar", ([FromBody] Cliente cliente, [FromServices] AppDataContext ctx) =>
 {
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
+    Cliente? clienteDaVez = ctx.Clientes.FirstOrDefault(x => x.cpf == cliente.cpf);
 
-app.UseHttpsRedirection();
+    if (clienteDaVez.ano == cliente.ano && clienteDaVez.mes == cliente.mes)
+    {
+        return Results.Conflict("Essa leitura já existe!");
+    }
 
-var summaries = new[]
+    if (cliente.ano <= 2000)
+    {
+        return Results.Conflict("Ano inválido");
+    }
+
+    if (cliente.mes < 1 || cliente.mes > 12)
+    {
+        return Results.Conflict("Mês inválido");
+    }
+
+    if (cliente.m3Consumidos < 0)
+    {
+        return Results.Conflict("Consumo menor do que zero!");
+    }
+
+    ctx.Clientes.Add(cliente);
+    ctx.SaveChanges();
+    return Results.Created("", cliente);
+});
+
+app.MapGet("/GuilhermeDuduBerti/listar",
+    ([FromServices] AppDataContext ctx) =>
 {
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
+    if (ctx.Clientes.Any())
+    {
+        return Results.Ok(ctx.Clientes.ToList());
+    }
+    return Results.NotFound("Lista vazia!");
+});
 
-app.MapGet("/weatherforecast", () =>
+app.MapGet("/GuilhermeDuduBerti/buscar/{cpf}/{mes}/{ano}", ([FromRoute] int cpf, [FromRoute] int mes, [FromRoute] int ano, [FromServices] AppDataContext ctx) =>
 {
-    var forecast =  Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
-})
-.WithName("GetWeatherForecast")
-.WithOpenApi();
+    Cliente? cliente = ctx.Clientes.FirstOrDefault(x => x.cpf == cpf);
+    if (cliente.cpf == cpf && cliente.mes == mes && cliente.ano == ano)
+    {
+        return Results.Ok(cliente);
+    }
+        return Results.NotFound("Consumo não encontrado!");
+    
+});
+
+app.MapDelete("/GuilhermeDuduBerti/deletar/{cpf}/{mes}/{ano}", ([FromRoute] int cpf, [FromRoute] int mes, [FromRoute] int ano, [FromServices] AppDataContext ctx) =>
+{
+    Cliente? clienteRemovido = ctx.Clientes.FirstOrDefault(x => x.cpf == cpf);
+    if (clienteRemovido.cpf == cpf && clienteRemovido.mes == mes && clienteRemovido.ano == ano)
+    {
+        ctx.Clientes.Remove(clienteRemovido);
+        ctx.SaveChanges();
+        return Results.Ok(clienteRemovido);
+    }
+    return Results.NotFound("Consumo não encotrado!");
+});
+
+RouteHandlerBuilder routeHandlerBuilder = app.MapGet("/GuilhermeDuduBerti/total-geral",
+    ([FromServices] AppDataContext ctx) =>
+{
+Cliente cliente = new Cliente();
+double consumoTotal = 0;
+
+foreach (Cliente c in ctx.Clientes)
+{
+    if (c.m3Consumidos < 11)
+    {
+        if (c.bandeira.Contains('Amarela')) {
+            consumoTotal += c.m3Consumidos * 2.5 * 1.1;
+        } else if (c.bandeira.Contains('Vermelha')) {
+            consumoTotal += c.m3Consumidos * 2.5 * 1.2;
+        } else {
+            consumoTotal += c.m3Consumidos * 2.5;
+        }
+    }
+
+    if (10 < c.m3Consumidos && c.m3Consumidos < 21)
+    {
+        if (c.bandeira.Contains('Amarela')) {
+            consumoTotal += c.m3Consumidos * 3.5 * 1.1;
+        } else if (c.bandeira.Contains('Vermelha')) {
+            consumoTotal += c.m3Consumidos * 3.5 * 1.2;
+        } else {
+            consumoTotal += c.m3Consumidos * 3.5;
+        }
+    }
+
+    if (21 < c.m3Consumidos && c.m3Consumidos < 51)
+    {
+        if (c.bandeira.Contains('Amarela')) {
+            consumoTotal += c.m3Consumidos * 5 * 1.1;
+        } else if (c.bandeira.Contains('Vermelha')) {
+            consumoTotal += c.m3Consumidos * 5 * 1.2;
+        } else {
+            consumoTotal += c.m3Consumidos * 5;
+        }
+    }
+
+    if (50 < c.m3Consumidos)
+    {
+        if (c.bandeira.Contains('Amarela')) {
+            consumoTotal += c.m3Consumidos * 6.5 * 1.1;
+        } else if (c.bandeira.Contains('Vermelha')) {
+            consumoTotal += c.m3Consumidos * 6.5 * 1.2;
+        } else {
+            consumoTotal += c.m3Consumidos * 6.5;
+        }
+    }
+
+    if (consumoTotal == 0) {
+        return Results.NotFound("Consumo não encotrado!");
+    }
+
+    return Results.Ok(consumoTotal)};
 
 app.Run();
 
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}
